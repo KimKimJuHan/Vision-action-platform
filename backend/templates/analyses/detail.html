@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}작업 #{{ job.id }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'analyses:index' %}">← 분석 화면</a></p>
+<h1 class="page-title">작업 #{{ job.id }} <span class="badge s-{{ job.status }}">{{ job.get_status_display }}</span></h1>
+
+<div class="grid">
+  <section class="card">
+    <h2 class="h">요청 정보</h2>
+    <dl class="kv">
+      <dt>사용자</dt><dd>{{ job.user.username }}</dd>
+      <dt>제목</dt><dd>{{ job.title|default:"-" }}</dd>
+      <dt>입력 방식</dt><dd>{{ job.get_input_type_display }}{% if job.capture_seconds %} ({{ job.capture_seconds|floatformat:0 }}초 수집){% endif %}</dd>
+      <dt>수행한 동작(사용자 입력)</dt><dd>{{ job.expected_action_display|default:"-" }}</dd>
+      <dt>메모</dt><dd>{{ job.memo|default:"-"|linebreaksbr }}</dd>
+      <dt>생성 / 완료</dt><dd>{{ job.created_at|date:"Y-m-d H:i:s" }} / {{ job.completed_at|date:"H:i:s"|default:"-" }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2 class="h">처리 결과</h2>
+    <dl class="kv">
+      <dt>메시지</dt><dd>{{ job.result_message|default:"-" }}</dd>
+      {% if job.status == "FAILURE" %}<dt>오류</dt><dd class="error">[{{ job.error_code }}] {{ job.error_message }}</dd>{% endif %}
+      <dt>영상 길이</dt><dd>{{ job.video_duration_sec|default:"-" }} 초</dd>
+      <dt>AI 추론 시간</dt><dd>{{ job.inference_time_sec|default:"-" }} 초</dd>
+      <dt>전체 처리 시간</dt><dd>{{ job.total_time_sec|default:"-" }} 초</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card">
+  <h2 class="h">사람별 예측</h2>
+  <table class="table">
+    <thead><tr><th>Track ID</th><th>예측 동작</th><th>신뢰도</th><th>득표율</th><th>Window 수</th><th>등장 구간</th></tr></thead>
+    <tbody>
+    {% for p in predictions %}
+      <tr>
+        <td>{{ p.track_id }}</td>
+        <td>{{ p.action_display }}{% if p.is_uncertain and p.action_label != "UNCERTAIN" %} <span class="badge warn">판단 불확실</span>{% endif %}</td>
+        <td>{% widthratio p.confidence 1 100 %}%</td>
+        <td>{% widthratio p.vote_ratio 1 100 %}%</td>
+        <td>{{ p.window_count }}</td>
+        <td>{{ p.first_seen_sec }}s ~ {{ p.last_seen_sec }}s</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="muted">예측 결과가 없습니다.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Track ID는 이 영상 안에서의 추적 번호이며, 사람의 고유 ID가 아닙니다.</p>
+</section>
+{% endblock %}
