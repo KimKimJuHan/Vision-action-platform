@@ -16,14 +16,16 @@
 ## 시연 전 준비 (10분)
 
 ```bash
+grep ACTION_SET .env                                # basic 이어야 함 (아니면 bash scripts/switch_model.sh basic)
 docker compose up -d && docker compose ps          # 5개 모두 Up, fastapi healthy
-docker compose exec fastapi python scripts/check_artifacts.py --with-pose   # T01 화면을 미리 띄워 둠 (team 모드)
+docker compose exec fastapi python scripts/check_artifacts.py --with-pose   # T01 화면을 미리 띄워 둠 (basic 모드)
 docker compose logs -f celery                       # 별도 터미널: 발표 중 Worker 로그 보여 주기
 ```
 
 - 브라우저 탭 3개: 사용자 화면(일반 계정 로그인), `/dashboard/`(관리자), README
-- 시연 영상: 팀 6동작 영상 1개(60초·100MB 이하, 예: A009), 손상 파일(`broken.mp4`: 아무 텍스트 파일의 확장자만 변경)
-- IP Webcam 시연 동작은 리허설에서 정답이 나온 A002(팔 위아래로 뻗기)·A001. 전신이 정면으로 나오게, 8초 내내 반복
+- 시연 영상: 강사 제공 과제 영상 `S01_A00x_T01.mp4`(2~6초, 짧아서 10초 안팎에 끝남), 손상 파일(`broken.mp4`: 아무 텍스트 파일의 확장자만 변경)
+- IP Webcam 시연 동작(basic): 손 흔들기(wave)나 앉았다 일어나기(sit_stand). 전신이 정면으로 나오게, 8초 내내 반복. 리허설로 정답이 나오는지 먼저 확인
+- 팀 모델을 보여 줄 때: `bash scripts/switch_model.sh team`(약 1분) → 팀 영상 A001·A002·A006 업로드 → 끝나면 `basic`으로 복귀
 - 휴대폰 IP Webcam 앱 실행, PC와 같은 Wi-Fi, `.env`의 `IP_WEBCAMS` 주소 확인
 - 캡처에 카메라 IP·`.env`가 보이지 않는지 확인
 

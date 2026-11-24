@@ -2,7 +2,7 @@
 
 > 교과10 최종 자율 프로젝트 · 1~8일차의 Pose·Feature·Window·Tracking 코드와 Random Forest 모델 형식을 그대로 가져와, 브라우저에서 분석을 요청하고 결과를 DB에 저장·조회하는 서비스
 >
-> 제출본: tag `v1.0-submission`
+> 제출본은 발표 직전 tag `v1.0-submission`으로 고정합니다. 이후 커밋은 제출 후 개선입니다.
 
 ---
 
@@ -64,7 +64,7 @@ docker compose exec fastapi python scripts/check_artifacts.py --with-pose   # T0
 
 | 바뀌어도 되는 것 | 바뀌면 안 되는 것 |
 |---|---|
-| 학습 데이터 양·사람 수, `sequence_steps`, 트리 개수 등 모델 설정 | Frame당 38개 Feature 정의(17 Keypoint x·y + 관절각 4)와 순서, 6개 Class 이름 |
+| 학습 데이터 양·사람 수, `sequence_steps`, 트리 개수 등 모델 설정 | Frame당 38개 Feature 정의(17 Keypoint x·y + 관절각 4)와 순서. Class 이름은 `action_catalog.py`·`model_loader.py`의 `ACTION_SETS`에 있어야 함 |
 
 - 규격이 다르면 `check_artifacts.py`(T01)와 서버 시작 단계에서 원인을 출력하고, 모델을 '준비 안 됨'으로 두어 예측 요청을 503으로 거절한다 (틀린 예측을 내지 않음, `/health`에 원인 표시).
 - 학습 환경의 scikit-learn 버전이 다르면 `.env`의 `SKLEARN_VERSION`을 맞추고 `docker compose up --build -d`.
@@ -103,7 +103,7 @@ docker compose ps                                   # fastapi가 healthy 가 될
 ### 2-4. 테스트
 
 ```bash
-docker compose exec django python manage.py test          # 회원·권한·CRUD·Celery 작업·화면 (27개)
+docker compose exec django python manage.py test          # 회원·권한·CRUD·Celery 작업·화면·동작 목록 (28개)
 cd ai_service && pip install pytest httpx scikit-learn && python -m pytest tests   # 추론 API·모델 로더·관절 보정 (19개, YOLO 대신 가짜 Tracker)
 ```
 
@@ -198,7 +198,7 @@ erDiagram
 | `analyses_analysisjob` | 분석 요청 1건과 진행 상태·오류·처리 시간 | `backend/analyses/models.py` |
 | `analyses_personprediction` | 영상 속 사람(Track ID)별 대표 동작 1행 | `backend/analyses/models.py` |
 
-예: 두 사람이 나온 영상 1건 → `AnalysisJob` 1행 + `PersonPrediction` 2행 (Track 1 `wave`, Track 2 `sit_stand`).
+예: 작업 #13(IP Webcam)에서 카메라에 두 사람이 잡힘 → `AnalysisJob` 1행 + `PersonPrediction` 2행 (Track 1, Track 2 각각 저장).
 
 **설계 원칙**
 - 관절 시퀀스(Keypoint)는 저장하지 않는다. FastAPI 메모리의 Sliding Window에서 추론하고 **결과만** 저장한다.
@@ -281,7 +281,7 @@ sequenceDiagram
 | 업로드 형식 | mp4 · mov · avi · mkv, 100MB·60초 이하 (`.env`로 조정) |
 | IP Webcam | 허용 목록 카메라에서 **8초** 수집 (연결 시간 제외), 실제 수신 FPS로 저장 |
 
-**사용 모델 선택 (`.env` 또는 `bash scripts/switch_model.sh team|basic`)**
+**사용 모델 선택 (`bash scripts/switch_model.sh basic|day06|team|team6`)**
 
 | 모드 | 동작 | 모델 파일 | 관절 추출 | Window / 기준 |
 |---|---|---|---|---|
@@ -294,6 +294,17 @@ sequenceDiagram
 - 동작 목록은 `backend/analyses/action_catalog.py`에 있고 `ACTION_SET`으로 고른다. DB에는 영문 Label을 저장하고 표시 이름만 바꾸므로, 모델을 바꿔도 이전 기록이 그대로 조회된다.
 - Window·기준값은 실제 영상으로 비교해 정한다: `docker compose exec fastapi python scripts/compare_settings.py /tmp/test.mp4 --expected side_lying_leg_raise`
 
+**팀 3동작 모델 `team`** (팀원 학습, 팀 저장소 `scripts/heavy/team_train_mediapipe.py`)
+
+| 항목 | 내용 |
+|---|---|
+| 데이터 | 팀 영상 S01 × A001(5)·A002(5)·A006(6) = 16클립, MediaPipe heavy 관절 |
+| 학습 샘플 | 16 (클립 1개 → 30 Step 1개) |
+| 처음 보는 사람 확인 | 학습에 안 쓴 S02·S03 32클립을 서비스 집계로 돌려 **32/32** (Window 3초) |
+| PC 실제 영상 (YOLO 박스 + MediaPipe heavy 보정) | 누운 자세 A006 17.9초 영상 → 정답, 신뢰도 0.94 |
+
+- 샘플이 16개로 적지만 세 동작이 앉기·서기·눕기로 자세 자체가 달라 잘 구분된다. 같은 방식(클립 1개 → 샘플 1개)이 6일차 모델에서 실패한 이유는 동작이 6개이고 서로 비슷한 동작(drink_return ↔ wave)이 있었기 때문이다.
+
 **확장 실험: 팀 6동작 모델 `team6`** (`ai_service/training/extract_heavy.py` → `train_team_model.py`)
 
 | 항목 | 내용 |
@@ -303,7 +314,7 @@ sequenceDiagram
 | 동작별 클립 | A001 23 · A002 23 · A003 8 · A006 18 · A009 9 · A010 7 (적은 동작은 `class_weight=balanced`) |
 | 학습 샘플 | 2·3·4·5초 Window를 0.25초씩 이동 → 20,341개 |
 | 처음 보는 사람 평가 (7명 중 1명씩 빼고 학습, Window 3초 다수결) | 클립 **80/88 (90.9%)**, Window 정확도 0.87, 신뢰도 평균 0.85 |
-| 서비스 코드로 불러오기 | `load_bundle` 경고 0개, 6개 Class = ACTION_SET team 목록, 전체 클립 서비스 집계 88/88 (학습 데이터라 동작 확인용) |
+| 서비스 코드로 불러오기 | `load_bundle` 경고 0개, 6개 Class = ACTION_SET team6 목록, 전체 클립 서비스 집계 88/88 (학습 데이터라 동작 확인용) |
 
 - 주로 틀린 경우: S02의 A002 4클립 → A003 (둘 다 서서 팔을 앞으로 드는 구간이 있음), 세로로 찍은 버드독 1개 → A009 (다른 버드독은 가로 촬영).
 - 한계: A003·A009·A010은 4명·정면(버드독은 측면) 영상만 있어, 다른 각도에서는 정확도가 떨어질 수 있다.
@@ -368,6 +379,7 @@ sequenceDiagram
 - 업로드는 파일 전체를, IP Webcam은 휴대폰이 보내는 MJPEG를 **8초 동안 수집**(약 60fps, 480여 프레임)해 mp4로 저장한 뒤 **같은 추론 경로**(`/predict/video`)로 보낸다. 서버는 두 경우 모두 15fps로 줄여 처리한다.
 - 처리 시간은 영상 길이에 비례한다 (CPU 추론). 두 입력은 촬영 거리·길이·조건이 달라, 신뢰도 크기로 정확도를 비교하지 않는다.
 - 업로드 시연 영상은 학습에 쓴 팀 영상이므로 맞히는 것이 당연하다. 처음 보는 사람 기준 성능은 위의 교차검증(80/88)이다.
+- `team6` 업로드 전체 기록(작업 #7~#20, 같은 파일 중복 제외): 서로 다른 영상 8개 중 7개 정답, 평균 신뢰도 0.94. 오답 1건은 학습에 없던 버드독 영상(MOV) → A009로, 교차검증에서 나온 혼동과 같다.
 
 ---
 
@@ -406,7 +418,7 @@ sequenceDiagram
 | T05 비동기 | POST 즉시 202 + 작업 ID | ✅ 자동 테스트 + 브라우저 |
 | T06 영구 저장 | 완료 후 새로고침해도 결과 유지 | ✅ |
 | T07 CRUD 권한 | B가 A의 작업 조회·수정·삭제 → 404 | ✅ 자동 테스트 (`test_t07_...`) |
-| T08 관리자 | `/dashboard/` 차트(동작별·상태별·입력 방식별) + Admin 목록 | ✅ |
+| T08 관리자 | `/dashboard/` 차트(동작별·상태별·입력 방식별) + Admin 목록 | ✅ 자동 테스트 (`test_t08_dashboard_staff_only`), 화면 캡처 추가 예정 |
 | T09 예외 처리 | 카메라 연결 실패 / 손상 파일 → FAILURE + 사유 | ✅ 작업 #11 `CAMERA_UNAVAILABLE` + 자동 테스트 |
 | T10 Docker | `docker compose restart` 후 데이터 유지·재연결 | ✅ (아래 'DB 재시작' 사례) |
 
@@ -444,13 +456,13 @@ vision_action_platform/
 │   └── static/               app.css · analyses.js · dashboard.js · vendor/chart.umd.min.js
 ├── ai_service/               FastAPI 추론 서버
 │   ├── main.py · routers/predictions.py
-│   ├── services/             settings · model_loader · pose_pipeline · action_inference · runtime
+│   ├── services/             settings · model_loader · pose_pipeline · keypoint_refiner · action_inference · runtime
 │   ├── src/                  기존 subject10 src 복사본
 │   ├── configs/ · models/    기존 설정·모델 (models는 Git 제외)
 │   ├── scripts/check_artifacts.py
 │   └── tests/                가짜 Tracker·더미 모델 기반 API 테스트
 ├── ai_service/training/      v2·팀 모델 학습 스크립트 (extract_heavy · train_team_model · train_window_model)
-├── scripts/                  import_from_subject10 · switch_model(team|basic|day06) · check_before_push
+├── scripts/                  import_from_subject10 · switch_model(basic|day06|team|team6) · check_before_push
 ├── compose.yaml · .env.example · .gitignore
 └── docs/DEMO_GUIDE.md        시연 순서 · 예상 질문
 ```
