@@ -103,7 +103,7 @@ docker compose ps                                   # fastapi가 healthy 가 될
 ### 2-4. 테스트
 
 ```bash
-docker compose exec django python manage.py test          # 회원·권한·CRUD·Celery 작업·화면·동작 목록 (28개)
+docker compose exec django python manage.py test          # 회원·권한·CRUD·Celery 작업·화면·동작 목록 (34개)
 cd ai_service && pip install pytest httpx scikit-learn && python -m pytest tests   # 추론 API·모델 로더·관절 보정 (19개, YOLO 대신 가짜 Tracker)
 ```
 
@@ -188,6 +188,7 @@ erDiagram
         float confidence
         int window_count "예측한 Window 수"
         float vote_ratio "다수결 득표율"
+        float valid_feature_ratio "입력 품질(관절 검출률)"
         bool is_uncertain
     }
 ```

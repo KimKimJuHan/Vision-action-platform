@@ -46,8 +46,11 @@
       const tr = document.createElement("tr");
       const label = p.action_label === "UNCERTAIN" ? "판단 불확실" : p.action_display;
       const warn = p.is_uncertain && p.action_label !== "UNCERTAIN" ? ' <span class="badge warn">불확실</span>' : "";
+      // 입력 품질: 관절이 가려지거나 잘려 Feature를 못 만든 Frame이 많으면 낮아진다
+      const quality = p.valid_feature_ratio == null ? "-" :
+        `${Math.round(p.valid_feature_ratio * 100)}%` + (p.is_low_quality ? ' <span class="badge warn">낮음</span>' : "");
       tr.innerHTML = `<td>${p.track_id}</td><td>${escapeHtml(label)}${warn}</td>` +
-        `<td>${Math.round(p.confidence * 100)}%</td><td>${p.window_count}</td>`;
+        `<td>${Math.round(p.confidence * 100)}%</td><td>${quality}</td><td>${p.window_count}</td>`;
       body.appendChild(tr);
     });
     resultTable.hidden = false;

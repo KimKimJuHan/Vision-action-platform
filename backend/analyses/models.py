@@ -82,6 +82,8 @@ class PersonPrediction(models.Model):
     window_count = models.PositiveIntegerField("처리 Window 수")
     vote_ratio = models.FloatField("득표율", default=0.0)
     is_uncertain = models.BooleanField("판단 불확실", default=False)
+    # 입력 품질: 이 사람이 보인 Frame 중 38-D Feature를 만들 수 있었던 비율 (관절이 가려지거나 잘리면 낮아진다)
+    valid_feature_ratio = models.FloatField("관절 검출률", null=True, blank=True)
     first_seen_sec = models.FloatField("첫 등장(초)", null=True, blank=True)
     last_seen_sec = models.FloatField("마지막 등장(초)", null=True, blank=True)
     created_at = models.DateTimeField("예측 시간", auto_now_add=True)
@@ -94,9 +96,15 @@ class PersonPrediction(models.Model):
             models.UniqueConstraint(fields=["job", "track_id"], name="uniq_prediction_per_track")
         ]
 
+    LOW_QUALITY_RATIO = 0.6  # day07 설정의 min_valid_feature_ratio 와 같은 기준
+
     @property
     def action_display(self) -> str:
         return display_name(self.action_label)
+
+    @property
+    def is_low_quality(self) -> bool:
+        return self.valid_feature_ratio is not None and self.valid_feature_ratio < self.LOW_QUALITY_RATIO
 
     def __str__(self) -> str:
         return f"job#{self.job_id} track {self.track_id}: {self.action_label} ({self.confidence:.2f})"

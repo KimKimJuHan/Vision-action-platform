@@ -135,6 +135,8 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 긴 영상 작업을 한 Worker가 몰�
 CELERY_TASK_TIME_LIMIT = int(os.getenv("CELERY_TASK_TIME_LIMIT", "600"))
 CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", "540"))
 CELERY_TIMEZONE = TIME_ZONE
+# STARTED 상태로 이 시간(초)을 넘기면 멈춘 작업으로 보고 실패 처리한다 (analyses/job_state.py)
+JOB_STALE_SECONDS = int(os.getenv("JOB_STALE_SECONDS", str(CELERY_TASK_TIME_LIMIT + 120)))
 
 # --------------------------------------------------------------------------- AI 서비스
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://fastapi:8000")  # localhost 아님: 서비스 이름
