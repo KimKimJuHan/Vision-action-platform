@@ -22,7 +22,7 @@ class AIServiceError(Exception):
 
 
 class AIServiceUnavailable(Exception):
-    """잠시 뒤 재시도할 가치가 있는 오류 (연결 실패, 모델 로딩 중 503, 5xx)."""
+    """잠시 뒤 재시도할 가치가 있는 오류 (연결 실패, 모델 로딩 중 503)."""
 
 
 def _parse_error(response: requests.Response) -> tuple[str, str]:
@@ -54,6 +54,7 @@ def request_prediction(video_path: Path) -> dict:
         return response.json()
 
     code, message = _parse_error(response)
-    if response.status_code == 503 or response.status_code >= 500:
+    if response.status_code == 503:
         raise AIServiceUnavailable(f"{code}: {message}")
+    # 400·413·422(입력 문제)와 500(추론 중 예외)은 같은 영상으로 다시 해도 결과가 같다 → 재시도하지 않음
     raise AIServiceError(code, message, response.status_code)

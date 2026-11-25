@@ -11,6 +11,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 
 from .action_catalog import UNCERTAIN, active_actions, active_set_name, display_name
+from .job_state import expire_if_stale
 from .models import AnalysisJob, PersonPrediction
 
 
@@ -42,6 +43,7 @@ def job_detail(request, pk: int):
     job = get_object_or_404(AnalysisJob.objects.select_related("user"), pk=pk)
     if job.user_id != request.user.id and not request.user.is_staff:
         raise Http404  # 남의 작업은 존재 여부도 알리지 않음
+    expire_if_stale(job)
     return render(request, "analyses/detail.html", {"job": job, "predictions": job.predictions.all()})
 
 

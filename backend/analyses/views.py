@@ -18,6 +18,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
+from .job_state import expire_if_stale
 from .models import AnalysisJob
 from .serializers import (
     AnalysisJobSerializer,
@@ -37,6 +38,12 @@ class AnalysisJobViewSet(viewsets.ModelViewSet):
         if self.request.user.is_staff:
             return qs
         return qs.filter(user=self.request.user)
+
+    def get_object(self):
+        # 상세·상태·삭제 모두 이 메서드를 거친다 → 멈춘 작업은 여기서 실패로 정리
+        job = super().get_object()
+        expire_if_stale(job)
+        return job
 
     def get_serializer_class(self):
         if self.action == "partial_update":

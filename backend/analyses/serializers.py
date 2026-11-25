@@ -16,12 +16,14 @@ from .models import AnalysisJob, PersonPrediction
 
 class PersonPredictionSerializer(serializers.ModelSerializer):
     action_display = serializers.CharField(read_only=True)
+    is_low_quality = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = PersonPrediction
         fields = [
             "track_id", "action_label", "action_display", "raw_label", "confidence",
-            "window_count", "vote_ratio", "is_uncertain", "first_seen_sec", "last_seen_sec",
+            "window_count", "vote_ratio", "is_uncertain", "valid_feature_ratio", "is_low_quality",
+            "first_seen_sec", "last_seen_sec",
         ]
         read_only_fields = fields
 

@@ -12,11 +12,14 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import AnalysisJob, PersonPrediction
-from .services import AIServiceError, AIServiceUnavailable
+from .services import AIServiceError, AIServiceUnavailable, request_prediction
 from .tasks import run_analysis
 
 TMP_MEDIA = tempfile.mkdtemp(prefix="test_media_")
@@ -28,9 +31,11 @@ FAKE_RESULT = {
     "person_detected": True,
     "predictions": [
         {"track_id": 1, "action_label": "wave", "confidence": 0.92, "raw_label": "wave",
-         "window_count": 9, "vote_ratio": 0.89, "is_uncertain": False, "first_seen_sec": 0.0, "last_seen_sec": 5.9},
+         "window_count": 9, "vote_ratio": 0.89, "is_uncertain": False, "first_seen_sec": 0.0, "last_seen_sec": 5.9,
+         "valid_feature_ratio": 0.97},
         {"track_id": 2, "action_label": "sit_stand", "confidence": 0.81, "raw_label": "sit_stand",
-         "window_count": 8, "vote_ratio": 0.75, "is_uncertain": False, "first_seen_sec": 0.2, "last_seen_sec": 5.9},
+         "window_count": 8, "vote_ratio": 0.75, "is_uncertain": False, "first_seen_sec": 0.2, "last_seen_sec": 5.9,
+         "valid_feature_ratio": 0.41},
     ],
     "video": {"duration_sec": 6.0},
     "processing_time_sec": 3.21,
@@ -268,6 +273,98 @@ class AnalysisApiTests(TestCase):
         job_id = res.data["id"]
         self.assertEqual(self.client_a.get(f"/api/v1/analyses/{job_id}/").status_code, 200)
         self.assertEqual(self.client_b.get(f"/api/v1/analyses/{job_id}/").status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=TMP_MEDIA, IP_WEBCAMS=CAMERAS, CAPTURE_SECONDS=8.0, JOB_STALE_SECONDS=720)
+class JobReliabilityTests(TestCase):
+    """멈춘 작업 정리, 재시도 범위, 카메라 재촬영 방지."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user("alice", password="pw-alice-123")
+        self.client_a = APIClient()
+        self.client_a.force_authenticate(self.alice)
+
+    def _job(self, **fields):
+        defaults = {"user": self.alice, "input_type": AnalysisJob.InputType.UPLOAD}
+        return AnalysisJob.objects.create(**{**defaults, **fields})
+
+    def test_retry_reuses_captured_webcam_clip(self):
+        job = self._job(input_type=AnalysisJob.InputType.IP_WEBCAM, camera_key="phone1")
+
+        def fake_capture(url, seconds, output_path, **kwargs):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"captured")
+            return {"frames": 100, "fps": 12.5, "duration_sec": 8.0}
+
+        calls = [AIServiceUnavailable("모델 로딩 중"), FAKE_RESULT]
+        with mock.patch("analyses.tasks.capture_clip", side_effect=fake_capture) as capture, \
+                mock.patch("analyses.tasks.request_prediction", side_effect=calls), \
+                mock.patch("analyses.tasks.RETRY_DELAY_SEC", 0):
+            run_analysis.apply(args=[job.pk])
+        job.refresh_from_db()
+        self.assertEqual(job.status, AnalysisJob.Status.SUCCESS)
+        self.assertEqual(capture.call_count, 1)  # 재시도에서는 다시 촬영하지 않는다
+
+    def test_stale_started_job_becomes_failure_and_deletable(self):
+        job = self._job(status=AnalysisJob.Status.STARTED, started_at=timezone.now() - timedelta(seconds=721))
+        res = self.client_a.get(f"/api/analyses/{job.pk}/status/")
+        self.assertEqual(res.data["status"], "FAILURE")
+        self.assertTrue(res.data["done"])
+        self.assertEqual(res.data["error_code"], "WORKER_TIMEOUT")
+        self.assertEqual(self.client_a.delete(f"/api/analyses/{job.pk}/").status_code, 204)
+
+    def test_recent_started_job_is_left_alone(self):
+        job = self._job(status=AnalysisJob.Status.STARTED, started_at=timezone.now() - timedelta(seconds=30))
+        res = self.client_a.get(f"/api/analyses/{job.pk}/status/")
+        self.assertEqual(res.data["status"], "STARTED")
+        self.assertEqual(self.client_a.delete(f"/api/analyses/{job.pk}/").status_code, 409)
+
+    def test_worker_does_not_overwrite_expired_job(self):
+        job = self._job(video_file="uploads/x.mp4")
+
+        def expire_then_answer(path):
+            AnalysisJob.objects.filter(pk=job.pk).update(status=AnalysisJob.Status.FAILURE, error_code="WORKER_TIMEOUT")
+            return FAKE_RESULT
+
+        with mock.patch("analyses.tasks._acquire_video", return_value=Path("x.mp4")), \
+                mock.patch("analyses.tasks.request_prediction", side_effect=expire_then_answer):
+            run_analysis.apply(args=[job.pk])
+        job.refresh_from_db()
+        self.assertEqual(job.status, AnalysisJob.Status.FAILURE)
+        self.assertEqual(job.predictions.count(), 0)
+
+    def test_input_quality_is_saved_and_returned(self):
+        job = self._job(video_file="uploads/x.mp4")
+        with mock.patch("analyses.tasks._acquire_video", return_value=Path("x.mp4")), \
+                mock.patch("analyses.tasks.request_prediction", return_value=FAKE_RESULT):
+            run_analysis.apply(args=[job.pk])
+        body = self.client_a.get(f"/api/analyses/{job.pk}/").data
+        by_track = {p["track_id"]: p for p in body["predictions"]}
+        self.assertEqual(by_track[1]["valid_feature_ratio"], 0.97)
+        self.assertFalse(by_track[1]["is_low_quality"])
+        self.assertTrue(by_track[2]["is_low_quality"])  # 0.41 < 0.6
+        self.client_a.force_login(self.alice)
+        html = self.client_a.get(f"/analyses/{job.pk}/").content.decode()
+        self.assertIn("입력 품질", html)
+        self.assertIn("낮음", html)
+
+    def test_only_503_and_connection_errors_are_retryable(self):
+        video = Path(TMP_MEDIA) / "svc.mp4"
+        video.parent.mkdir(parents=True, exist_ok=True)
+        video.write_bytes(b"0")
+
+        def response(status, code):
+            fake = mock.Mock(status_code=status)
+            fake.json.return_value = {"detail": {"code": code, "message": "m"}}
+            return fake
+
+        with mock.patch("analyses.services.requests.post", return_value=response(503, "MODEL_NOT_READY")):
+            with self.assertRaises(AIServiceUnavailable):
+                request_prediction(video)
+        with mock.patch("analyses.services.requests.post", return_value=response(500, "INFERENCE_ERROR")):
+            with self.assertRaises(AIServiceError) as ctx:
+                request_prediction(video)
+        self.assertEqual(ctx.exception.code, "INFERENCE_ERROR")
 
 
 class ActionCatalogTests(TestCase):

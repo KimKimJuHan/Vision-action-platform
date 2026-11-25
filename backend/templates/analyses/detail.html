@@ -31,7 +31,7 @@
 <section class="card">
   <h2 class="h">사람별 예측</h2>
   <table class="table">
-    <thead><tr><th>Track ID</th><th>예측 동작</th><th>신뢰도</th><th>득표율</th><th>Window 수</th><th>등장 구간</th></tr></thead>
+    <thead><tr><th>Track ID</th><th>예측 동작</th><th>신뢰도</th><th>득표율</th><th>입력 품질 (관절 검출률)</th><th>Window 수</th><th>등장 구간</th></tr></thead>
     <tbody>
     {% for p in predictions %}
       <tr>
@@ -39,14 +39,16 @@
         <td>{{ p.action_display }}{% if p.is_uncertain and p.action_label != "UNCERTAIN" %} <span class="badge warn">판단 불확실</span>{% endif %}</td>
         <td>{% widthratio p.confidence 1 100 %}%</td>
         <td>{% widthratio p.vote_ratio 1 100 %}%</td>
+        <td>{% if p.valid_feature_ratio is None %}-{% else %}{% widthratio p.valid_feature_ratio 1 100 %}%{% if p.is_low_quality %} <span class="badge warn">낮음</span>{% endif %}{% endif %}</td>
         <td>{{ p.window_count }}</td>
         <td>{{ p.first_seen_sec }}s ~ {{ p.last_seen_sec }}s</td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="muted">예측 결과가 없습니다.</td></tr>
+      <tr><td colspan="7" class="muted">예측 결과가 없습니다.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  <p class="muted small">입력 품질은 그 사람이 보인 Frame 중 관절 Feature를 만들 수 있었던 비율입니다. 낮으면 몸이 가려졌거나 화면 밖으로 나간 것이므로 예측을 더 조심해서 봐야 합니다.</p>
   <p class="muted small">Track ID는 이 영상 안에서의 추적 번호이며, 사람의 고유 ID가 아닙니다.</p>
 </section>
 {% endblock %}

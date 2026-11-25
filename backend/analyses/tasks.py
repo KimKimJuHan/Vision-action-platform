@@ -48,6 +48,13 @@ def _acquire_video(job: AnalysisJob) -> Path:
             raise CaptureError("VIDEO_MISSING", "업로드된 영상 파일을 찾을 수 없습니다.")
         return path
 
+    # 재시도(AI 서버 미준비)로 다시 들어온 경우: 이미 수집한 영상을 그대로 쓴다.
+    # 다시 촬영하면 사용자가 카메라 앞을 떠난 뒤의 영상을 분석하게 된다.
+    if job.video_file:
+        captured = Path(job.video_file.path)
+        if captured.exists():
+            return captured
+
     camera = settings.IP_WEBCAMS.get(job.camera_key)
     if camera is None:  # 생성 후 .env에서 카메라가 빠진 경우
         raise CaptureError("CAMERA_NOT_ALLOWED", "허용 목록에 없는 카메라입니다.")
@@ -106,8 +113,10 @@ def run_analysis(self, job_id: int) -> dict:
 
     predictions = result.get("predictions", [])
     with transaction.atomic():
-        # 추론하는 동안 사용자가 작업을 삭제했으면 저장하지 않음
-        if not AnalysisJob.objects.select_for_update().filter(pk=job_id).exists():
+        # 추론하는 동안 사용자가 작업을 삭제했거나, 제한 시간 초과로 이미 실패 처리됐으면 저장하지 않음
+        current = AnalysisJob.objects.select_for_update().filter(pk=job_id).values_list("status", flat=True).first()
+        if current != AnalysisJob.Status.STARTED:
+            logger.warning("job %s 결과를 버림 (현재 상태: %s)", job_id, current)
             return {"job_id": job_id, "status": "SKIPPED"}
         PersonPrediction.objects.filter(job_id=job_id).delete()  # 재시도 시 중복 방지
         PersonPrediction.objects.bulk_create(
@@ -121,6 +130,7 @@ def run_analysis(self, job_id: int) -> dict:
                     window_count=int(p.get("window_count", 0)),
                     vote_ratio=float(p.get("vote_ratio", 0.0)),
                     is_uncertain=bool(p.get("is_uncertain", False)),
+                    valid_feature_ratio=p.get("valid_feature_ratio"),
                     first_seen_sec=p.get("first_seen_sec"),
                     last_seen_sec=p.get("last_seen_sec"),
                 )

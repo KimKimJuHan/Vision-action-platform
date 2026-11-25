@@ -9,7 +9,7 @@ class PersonPredictionInline(admin.TabularInline):
     model = PersonPrediction
     extra = 0
     can_delete = False
-    fields = ("track_id", "action_label", "confidence", "window_count", "vote_ratio", "is_uncertain")
+    fields = ("track_id", "action_label", "confidence", "window_count", "vote_ratio", "valid_feature_ratio", "is_uncertain")
     readonly_fields = fields
 
     def has_add_permission(self, request, obj=None):
