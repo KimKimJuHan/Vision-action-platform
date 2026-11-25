@@ -6,7 +6,7 @@
 """
 import sys, time
 from pathlib import Path
-import cv2, numpy as np, pandas as pd
+import cv2, pandas as pd
 import mediapipe as mp
 from mediapipe.tasks import python as mpt
 from mediapipe.tasks.python import vision

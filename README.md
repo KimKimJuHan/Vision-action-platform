@@ -248,6 +248,56 @@ sequenceDiagram
     V-->>JS: 사람별 결과 → 표에 표시
 ```
 
+**파일·함수 기준 흐름도** (컨테이너별)
+
+```mermaid
+flowchart TD
+    subgraph BR["브라우저"]
+        A1["index.html<br/>start-btn 「AI 분석 시작」"]
+        A2["analyses.js<br/>submit 핸들러 · fetch POST"]
+        A3["analyses.js<br/>poll() · renderResults() · refreshHistory()"]
+    end
+    subgraph DJ["django 컨테이너"]
+        B1["config/urls.py<br/>include('analyses.urls')"]
+        B2["analyses/urls.py<br/>DefaultRouter"]
+        B3["analyses/views.py<br/>AnalysisJobViewSet.create()"]
+        B4["analyses/serializers.py<br/>AnalysisJobSerializer.validate()"]
+        B5["analyses/views.py<br/>AnalysisJobViewSet.status()"]
+    end
+    subgraph CE["celery 컨테이너"]
+        C1["analyses/tasks.py<br/>run_analysis()"]
+        C2["analyses/tasks.py<br/>_acquire_video()"]
+        C3["analyses/camera_capture.py<br/>capture_clip()"]
+        C4["analyses/services.py<br/>request_prediction()"]
+    end
+    subgraph FA["fastapi 컨테이너"]
+        D1["routers/predictions.py<br/>predict_video()"]
+        D2["services/action_inference.py<br/>analyze_video()"]
+        D3["services/pose_pipeline.py<br/>probe_video() · iter_observations()<br/>YoloPoseTracker.track()"]
+        D4["services/action_inference.py<br/>ActionInferenceSession.update() · summarize()<br/>src/realtime_utils.predict_from_window()"]
+    end
+    R[("redis<br/>작업 큐")]
+    P[("postgres<br/>AnalysisJob · PersonPrediction")]
+
+    A1 -->|"클릭"| A2
+    A2 -->|"POST /api/analyses/"| B1 --> B2 --> B3
+    B3 -->|"is_valid()"| B4
+    B3 -->|"save() PENDING"| P
+    B3 -->|"on_commit → apply_async()"| R
+    B3 -->|"202 + 작업 ID"| A2
+    A2 -->|"1.5초마다"| A3
+    A3 -->|"GET /api/analyses/id/status/"| B5
+    R --> C1
+    C1 --> C2
+    C2 -.->|"IP Webcam일 때"| C3
+    C1 --> C4
+    C4 -->|"POST /predict/video"| D1
+    D1 --> D2 --> D3 --> D4
+    D4 -->|"사람별 JSON"| C4
+    C1 -->|"transaction.atomic 저장"| P
+    B5 --> P
+```
+
 **강사님 기준 순서와 실제 파일** (AI 분석 버튼 → … → JavaScript)
 
 | # | 기준 단계 | 실제 파일 · 함수 | 하는 일 |
