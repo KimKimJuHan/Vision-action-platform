@@ -37,7 +37,6 @@ ACTION_SETS: dict[str, dict[str, str]] = {
         "side_lying_leg_raise": "A006", "adductor_bridge": "A009", "bird_dog": "A010",
     },
 }
-EXPECTED_ACTIONS = ACTION_SETS["basic"]  # 하위 호환
 
 REQUIRED_TRAINING_KEYS = ("classes", "feature_count", "sequence_steps")
 REQUIRED_RUNTIME_KEYS = (

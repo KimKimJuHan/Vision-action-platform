@@ -10,7 +10,7 @@ from pathlib import Path
 from django.conf import settings
 from rest_framework import serializers
 
-from .action_catalog import active_actions, display_name
+from .action_catalog import active_actions
 from .models import AnalysisJob, PersonPrediction
 
 

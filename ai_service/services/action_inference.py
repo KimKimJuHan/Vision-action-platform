@@ -16,7 +16,6 @@ from .model_loader import ModelBundle
 from .pose_pipeline import FrameObservation
 
 UNCERTAIN_LABEL = "UNCERTAIN"
-NON_ACTION_LABELS = {"UNKNOWN", "WARMING_UP", "", None}
 
 
 @dataclass
